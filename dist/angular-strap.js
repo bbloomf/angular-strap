@@ -197,8 +197,8 @@
           }
           // BHB (2015.11.10) added following if block to allow submenus...
           //     if the mouse has hovered over onto a child of the tooltip element itself, do not hide the element.
-          var toElement = e.toElement || e.relatedTarget;
-          if($tooltip.$element && e && e.type == 'mouseleave' && (toElement === $tooltip.$element[0] || toElement === element[0] || $(toElement).parents().is($tooltip.$element))) {
+          var toElement = e && (e.toElement || e.relatedTarget);
+          if(e && e.type == 'mouseleave' && $tooltip.$element && (toElement === $tooltip.$element[0] || toElement === element[0] || $(toElement).parents().is($tooltip.$element))) {
             $tooltip.$element.on('mouseenter', $tooltip.enter);
             $tooltip.$element.on('mouseleave', $tooltip.leave);
             return;
