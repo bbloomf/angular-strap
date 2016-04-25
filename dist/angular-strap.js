@@ -280,11 +280,8 @@
             //BHB, 2015.11.12, extensive changes to the whole autoPlace algorithm
             var originalPlacement = placement;
             var viewportPosition = getPosition($tooltip.$viewport);
-            //var correctionHeight = /(?:left|right)-/.test(originalPlacement)? elementPosition.height : 0;
-            //var correctionWidth = /(?:top|bottom)-/.test(originalPlacement)? elementPosition.width : 0;
-            //TODO: get rid of correctionWidth and -Height if really not needed.
-            var correctionWidth = 0;
-            var correctionHeight = 0;
+            var correctionHeight = /(?:left|right)-/.test(originalPlacement)? elementPosition.height : 0;
+            var correctionWidth = /(?:top|bottom)-/.test(originalPlacement)? elementPosition.width : 0;
             if (/bottom/.test(originalPlacement) && elementPosition.bottom - correctionHeight + tipHeight > viewportPosition.bottom) {
               placement = originalPlacement.replace('bottom', 'top');
               //BHB, 2015.10.02: changed the following lines to prevent the tooltip from going outside the viewport in cases when it fits neither above nor below
@@ -480,11 +477,13 @@
           if (split[0] === 'top' || split[0] === 'bottom') {
             switch (split[1]) {
              case 'left':
-              offset.left = position.left;
+              // BHB, 2016.04.25, Made these '-left' and '-right' cases to match the '-top' and '-bottom' cases below,
+              // The second component will thus always line up its other side with that side of the related object.
+              offset.left = position.left + position.width - actualWidth;
               break;
 
              case 'right':
-              offset.left = position.left + position.width - actualWidth;
+              offset.left = position.left;
               break;
 
              default:
