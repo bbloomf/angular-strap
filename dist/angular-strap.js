@@ -189,7 +189,20 @@
         function enterAnimateCallback() {
           scope.$emit(options.prefixEvent + '.show', $tooltip);
         }
-        $tooltip.leave = function() {
+        $tooltip.leave = function(e) {
+          // BHB, 2015.07.17, added to fix IE8's behavior with typeaheads
+          if(e && e.type == 'blur' && $(document.activeElement).parents().is($tooltip.$element)) {
+            $(e.target).focus();
+            return;
+          }
+          // BHB (2015.11.10) added following if block to allow submenus...
+          //     if the mouse has hovered over onto a child of the tooltip element itself, do not hide the element.
+          var toElement = e.toElement || e.relatedTarget;
+          if($tooltip.$element && e && e.type == 'mouseleave' && (toElement === $tooltip.$element[0] || toElement === element[0] || $(toElement).parents().is($tooltip.$element))) {
+            $tooltip.$element.on('mouseenter', $tooltip.enter);
+            $tooltip.$element.on('mouseleave', $tooltip.leave);
+            return;
+          }
           clearTimeout(timeout);
           hoverState = 'out';
           if (!options.delay || !options.delay.hide) {
@@ -264,17 +277,55 @@
           var tipHeight = tipElement.prop('offsetHeight');
           $tooltip.$viewport = options.viewport && findElement(options.viewport.selector || options.viewport);
           if (autoPlace) {
+            //BHB, 2015.11.12, extensive changes to the whole autoPlace algorithm
             var originalPlacement = placement;
             var viewportPosition = getPosition($tooltip.$viewport);
-            if (/bottom/.test(originalPlacement) && elementPosition.bottom + tipHeight > viewportPosition.bottom) {
+            //var correctionHeight = /(?:left|right)-/.test(originalPlacement)? elementPosition.height : 0;
+            //var correctionWidth = /(?:top|bottom)-/.test(originalPlacement)? elementPosition.width : 0;
+            //TODO: get rid of correctionWidth and -Height if really not needed.
+            var correctionWidth = 0;
+            var correctionHeight = 0;
+            if (/bottom/.test(originalPlacement) && elementPosition.bottom - correctionHeight + tipHeight > viewportPosition.bottom) {
               placement = originalPlacement.replace('bottom', 'top');
-            } else if (/top/.test(originalPlacement) && elementPosition.top - tipHeight < viewportPosition.top) {
+              //BHB, 2015.10.02: changed the following lines to prevent the tooltip from going outside the viewport in cases when it fits neither above nor below
+              if(elementPosition.top + correctionHeight - tipHeight < viewportPosition.top) {
+                elementPosition.top = elementPosition.bottom = viewportPosition.bottom;
+                elementPosition.height = 0;
+              }
+            } else if (/top/.test(originalPlacement) && elementPosition.top + correctionHeight - tipHeight < viewportPosition.top) {
               placement = originalPlacement.replace('top', 'bottom');
+              if(elementPosition.bottom - correctionHeight + tipHeight > viewportPosition.bottom) {
+                elementPosition.top = elementPosition.bottom = viewportPosition.top;
+                elementPosition.height = 0;
+              }
             }
-            if (/left/.test(originalPlacement) && elementPosition.left - tipWidth < viewportPosition.left) {
+            if (/left/.test(originalPlacement) && elementPosition.left + correctionWidth - tipWidth < viewportPosition.left) {
               placement = placement.replace('left', 'right');
-            } else if (/right/.test(originalPlacement) && elementPosition.right + tipWidth > viewportPosition.width) {
+              if(elementPosition.right - correctionWidth + tipWidth > viewportPosition.right) {
+                var spaceToRight = viewportPosition.right - elementPosition.right;
+                var spaceToLeft = elementPosition.left - viewportPosition.left;
+                elementPosition.width = 0;
+                if(spaceToRight < spaceToLeft) {
+                  elementPosition.left = elementPosition.right = viewportPosition.left + tipWidth;
+                  placement = placement.replace('right', 'left');
+                } else {
+                  elementPosition.left = elementPosition.right = viewportPosition.right - tipWidth;
+                }
+              }
+            } else if (/right/.test(originalPlacement) && elementPosition.right - correctionWidth + tipWidth > viewportPosition.right) {
               placement = placement.replace('right', 'left');
+              //BHB, 2015.10.09: changed the following lines to prevent the tooltip from going outside the viewport in cases when it fits neither left nor right
+              if(elementPosition.left + correctionWidth - tipWidth < viewportPosition.left) {
+                var spaceToRight = viewportPosition.right - elementPosition.right;
+                var spaceToLeft = elementPosition.left - viewportPosition.left;
+                elementPosition.width = 0;
+                if(spaceToRight < spaceToLeft) {
+                  elementPosition.left = elementPosition.right = viewportPosition.left + tipWidth;
+                } else {
+                  elementPosition.left = elementPosition.right = viewportPosition.right - tipWidth;
+                  placement = placement.replace('left', 'right');
+                }
+              }
             }
             tipElement.removeClass(originalPlacement).addClass(placement);
           }
@@ -798,7 +849,8 @@
         var options = {
           scope: scope
         };
-        angular.forEach([ 'template', 'templateUrl', 'controller', 'controllerAs', 'placement', 'container', 'delay', 'trigger', 'keyboard', 'html', 'animation', 'filter', 'limit', 'minLength', 'watchOptions', 'selectMode', 'autoSelect', 'comparator', 'id', 'prefixEvent', 'prefixClass' ], function(key) {
+        // BHB, 2015.07.15, add 'watchFilterParams' to this list
+        angular.forEach([ 'template', 'templateUrl', 'controller', 'controllerAs', 'placement', 'container', 'delay', 'trigger', 'keyboard', 'html', 'animation', 'filter', 'limit', 'minLength', 'watchOptions', 'watchFilterParams', 'selectMode', 'autoSelect', 'comparator', 'id', 'prefixEvent', 'prefixClass' ], function(key) {
           if (angular.isDefined(attr[key])) options[key] = attr[key];
         });
         var falseValueRegExp = /^(false|0|)$/i;
@@ -825,6 +877,17 @@
               controller.$render();
             });
           });
+        }
+        // BHB, 2015.07.15, Added an option to watch filter parameters so that I could have the lookahead get updated when they change
+        if (options.watchFilterParams) {
+            angular.forEach(attr.bsOptions.match(/:[^:|]+/g), function(val) {
+              scope.$watchCollection(val.slice(1), function (newValue, oldValue) {
+                parsedOptions.valuesFn(scope, controller).then(function (values) {
+                  typeahead.update(values);
+                  controller.$render();
+                });
+              });
+            });
         }
         scope.$watch(attr.ngModel, function(newValue, oldValue) {
           scope.$modelValue = newValue;
@@ -2154,7 +2217,9 @@
           var options = {
             scope: scope
           };
-          angular.forEach([ 'template', 'templateUrl', 'controller', 'controllerAs', 'placement', 'container', 'delay', 'trigger', 'keyboard', 'html', 'animation', 'id', 'autoClose' ], function(key) {
+          // JFN: 2015-11-13 -- added missing prefixEvent support
+          // BHB: 2016-01-21 -- added missing viewport support
+          angular.forEach([ 'template', 'templateUrl', 'controller', 'controllerAs', 'placement', 'container', 'delay', 'trigger', 'keyboard', 'html', 'animation', 'id', 'autoClose', 'prefixEvent', 'viewport' ], function(key) {
             if (angular.isDefined(tAttrs[key])) options[key] = tAttrs[key];
           });
           var falseValueRegExp = /^(false|0|)$/i;
